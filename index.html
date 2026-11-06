@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TV Paraguay</title>
+<title>En Vivo</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
   body { display: flex; flex-direction: column; background: #2a2a2e; }
@@ -15,21 +15,30 @@
     border-bottom: 1px solid #2a2a2e;
   }
   #header.hidden { display: none; }
-  #channels { display: flex; gap: 14px; flex: 1; overflow: hidden; }
+  #channels { display: flex; gap: 12px; flex: 1; overflow: hidden; }
   .ctl { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
   .ctl .key { color: #777; font-size: 11px; }
-  #header button {
+  #header button, #header select {
     border: 0; border-radius: 5px; cursor: pointer; padding: 2px 7px;
     background: #2c2c32; color: #fff; font-size: 13px; line-height: 1.4;
   }
-  #header button:hover { background: #45454d; }
+  #header select { max-width: 150px; font-family: inherit; }
+  #header button:hover, #header select:hover { background: #45454d; }
   #header button.on { background: #2ecc71; color: #000; }
+  #layouts { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+  #layouts .key { color: #777; font-size: 11px; margin-right: 2px; }
   #clock { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; color: #fff; letter-spacing: .5px; }
   #clock small { color: #888; font-weight: 400; font-size: 11px; margin-left: 4px; }
 
-  /* El gap + fondo gris forma el marco fino entre cuadros */
+  /* Aviso fijo abajo; es parte de la columna, así no tapa los cuadros */
+  #footer {
+    flex: 0 0 auto; padding: 4px 10px; background: #151518; color: #888;
+    font-size: 11px; text-align: center; border-top: 1px solid #2a2a2e;
+  }
+
+  /* El gap + fondo gris forma el marco fino entre cuadros; columnas/filas las fija setLayout() */
   #grid {
-    flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    flex: 1; display: grid;
     gap: 3px; padding: 3px; box-sizing: border-box; min-height: 0;
   }
   .cell { position: relative; background: #000; border-radius: 4px; overflow: hidden; }
@@ -59,13 +68,19 @@
 <body>
 <div id="header">
   <div id="channels"></div>
+  <div id="layouts"><span class="key">Pantallas</span></div>
   <button id="reloadAll" title="Recargar todo">↻ Todo</button>
   <div id="clock"></div>
 </div>
 <div id="grid"></div>
+<div id="footer">Seguir cómo avanza el caso Ueno Bank desde un solo lugar, sin saltar entre pestañas. No pretende ser comercializado.</div>
 
 <script>
+  // Nombre de la app (pestaña del navegador). Cambiarlo solo aquí.
+  const APP_NAME = 'En Vivo';
+
   // ===== CANALES — edita aquí =====
+  // Lista de canales disponibles; cada pantalla elige uno desde su desplegable.
   // channelId: siempre muestra el directo actual del canal (no cambia).
   // videoId:   opcional. Si lo completas, se usa ese video en vez del directo del canal.
   //            Sirve si el directo por canal no carga. Cópialo del link: youtube.com/watch?v=ESTE_ID
@@ -74,17 +89,45 @@
     { name: 'MEGA TV',         channelId: 'UCfAdi_G2owo819wJsw4OLPQ', videoId: '' }, // último visto: yrqaA-LTbrA
     { name: 'ABC TV',          channelId: 'UCEklbFbPoMaV1ciEb-0mAxg', videoId: '' }, // último visto: koJbtOzjsbI
     { name: 'NPY',             channelId: 'UCXm5UbX1eXIFmFE0lz1etiA', videoId: '' }, // último visto: _ErAcg5qFMo
+    { name: 'Senado TV',       channelId: 'UCMXLvWR4z1Z4P4JvubxMQtg', videoId: '' }, // último visto: rmdELJNkqS4
+    { name: 'Trece',           channelId: 'UCbgzWL_vNk3K2vcpk2udhLA', videoId: '' }, // último visto: dU7zxIJDhYM
   ];
   // ================================
 
+  // Diseños: cantidad de pantallas → [columnas, filas]
+  const LAYOUTS = { 1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2] };
+  const MAX_SLOTS = 6;
+  const STORAGE_KEY = 'tv-paraguay';
+
+  document.title = APP_NAME;
+
   const grid = document.getElementById('grid');
   const channelsBar = document.getElementById('channels');
+  const layoutsBar = document.getElementById('layouts');
   const header = document.getElementById('header');
   const players = [];
+  const layoutBtns = {};
   let apiReady = false;
   const params = 'autoplay=1&mute=1&controls=0&rel=0&playsinline=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
 
-  CHANNELS.forEach((ch, i) => {
+  // Lo elegido (diseño + canal de cada pantalla) se recuerda en este navegador
+  function readState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ layout, slots })); } catch (e) {}
+  }
+
+  const saved = readState();
+  let layout = LAYOUTS[saved.layout] ? saved.layout : 4;
+  // Canal por pantalla (guardado por channelId); si ya no existe en CHANNELS, vuelve al de por defecto
+  const slots = Array.from({ length: MAX_SLOTS }, (_, i) => {
+    const id = saved.slots && saved.slots[i];
+    return CHANNELS.some(c => c.channelId === id) ? id : CHANNELS[i % CHANNELS.length].channelId;
+  });
+  const channelFor = i => CHANNELS.find(c => c.channelId === slots[i]);
+
+  function addSlot(i) {
     const cell = document.createElement('div');
     cell.className = 'cell';
     grid.append(cell);
@@ -92,19 +135,41 @@
     const ctl = document.createElement('div');
     ctl.className = 'ctl';
     const key = document.createElement('span'); key.className = 'key'; key.textContent = i + 1;
-    const name = document.createElement('span'); name.textContent = ch.name;
+    const select = document.createElement('select'); select.title = 'Elegir canal';
+    CHANNELS.forEach(c => select.add(new Option(c.name, c.channelId)));
+    select.value = slots[i];
+    select.onchange = () => { slots[i] = select.value; saveState(); load(i); select.blur(); };
     const muteBtn = document.createElement('button'); muteBtn.onclick = () => toggle(i);
     const reloadBtn = document.createElement('button'); reloadBtn.textContent = '↻'; reloadBtn.title = 'Recargar'; reloadBtn.onclick = () => load(i);
-    ctl.append(key, name, muteBtn, reloadBtn);
+    ctl.append(key, select, muteBtn, reloadBtn);
     channelsBar.append(ctl);
 
-    players[i] = { cell, muteBtn, muted: true, yt: null };
+    players[i] = { cell, ctl, muteBtn, muted: true, yt: null };
     load(i);
-  });
+  }
+
+  function removeLastSlot() {
+    const p = players.pop();
+    if (p.yt) { try { p.yt.destroy(); } catch (e) {} }
+    p.cell.remove();
+    p.ctl.remove();
+  }
+
+  // Solo agrega o quita las pantallas que cambian; las demás siguen sin recargar
+  function setLayout(n) {
+    layout = n;
+    const [cols, rows] = LAYOUTS[n];
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    while (players.length < n) addSlot(players.length);
+    while (players.length > n) removeLastSlot();
+    Object.entries(layoutBtns).forEach(([k, b]) => b.classList.toggle('on', Number(k) === n));
+    saveState();
+  }
 
   // Crea (o recrea) el iframe del cuadro; al recargar vuelve a empezar en mute
   function load(i) {
-    const ch = CHANNELS[i];
+    const ch = channelFor(i);
     const p = players[i];
     if (p.yt) { try { p.yt.destroy(); } catch (e) {} p.yt = null; }
     p.cell.innerHTML = '';
@@ -142,9 +207,19 @@
     render(i);
   }
 
+  Object.keys(LAYOUTS).forEach(k => {
+    const b = document.createElement('button');
+    b.textContent = k; b.title = `${k} pantalla${k === '1' ? '' : 's'}`;
+    b.onclick = () => setLayout(Number(k));
+    layoutBtns[k] = b;
+    layoutsBar.append(b);
+  });
+  setLayout(layout);
+
   document.getElementById('reloadAll').onclick = () => players.forEach((_, i) => load(i));
 
   document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'SELECT') return;
     if (e.key === 'h' || e.key === 'H') { header.classList.toggle('hidden'); return; }
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= players.length) toggle(n - 1);
