@@ -64,6 +64,17 @@
   .tag .dot { width: 7px; height: 7px; border-radius: 50%; background: #e53935; box-shadow: 0 0 4px #e53935; }
   .cell.audio .tag .dot { background: #2ecc71; box-shadow: 0 0 4px #2ecc71; }
 
+  /* Botones de cada cuadro (abrir en YouTube, agrandar), arriba a la derecha; se aclaran al pasar el mouse */
+  .tools { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; gap: 4px; opacity: .35; transition: opacity .2s; }
+  .cell:hover .tools { opacity: 1; }
+  .tools button {
+    border: 0; border-radius: 5px; cursor: pointer; padding: 3px 8px;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 14px;
+  }
+  .tools button:hover, .tools button.on { background: #2ecc71; color: #000; }
+  /* Un cuadro agrandado oculta los demás (se descargan y se recargan al volver) */
+  .cell.hide { display: none; }
+
   /* Aviso cuando el canal no transmite o el video no se puede ver */
   .offline {
     position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column;
@@ -81,7 +92,7 @@
   <div id="clock"></div>
 </div>
 <div id="grid"></div>
-<div id="footer">Seguir cómo avanza el caso Ueno Bank desde un solo lugar, sin saltar entre pestañas. No pretende ser comercializado.</div>
+<div id="footer">Seguir el juicio político desde un solo lugar, sin saltar entre pestañas. Los videos se reproducen con el reproductor oficial de YouTube y pertenecen a sus canales; esta página no aloja ni retransmite contenido. Uso personal, sin fines comerciales.</div>
 
 <script>
   // Nombre de la app (pestaña del navegador). Cambiarlo solo aquí.
@@ -142,6 +153,7 @@
 
   const saved = readState();
   let layout = LAYOUTS[saved.layout] ? saved.layout : 4;
+  let expanded = -1; // índice del cuadro agrandado, -1 = ninguno
   // Canal por pantalla (guardado por channelId); si ya no existe en CHANNELS, vuelve al de por defecto
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => {
     const id = saved.slots && saved.slots[i];
@@ -191,7 +203,14 @@
     ctl.append(key, select, muteBtn, reloadBtn, linkBtn);
     channelsBar.append(ctl);
 
-    players[i] = { cell, ctl, muteBtn, linkBtn, muted: true, yt: null };
+    const openBtn = document.createElement('button'); openBtn.textContent = '↗'; openBtn.title = 'Abrir en YouTube';
+    openBtn.onclick = () => window.open(youtubeUrl(i), '_blank', 'noopener');
+    const bigBtn = document.createElement('button'); bigBtn.textContent = '⛶'; bigBtn.title = 'Agrandar / volver (Esc)';
+    bigBtn.onclick = () => toggleExpand(i);
+    const tools = document.createElement('div'); tools.className = 'tools';
+    tools.append(openBtn, bigBtn);
+
+    players[i] = { cell, ctl, muteBtn, linkBtn, bigBtn, tools, muted: true, yt: null };
     load(i);
   }
 
@@ -205,13 +224,40 @@
   // Solo agrega o quita las pantallas que cambian; las demás siguen sin recargar
   function setLayout(n) {
     layout = n;
-    const [cols, rows] = LAYOUTS[n];
-    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    expanded = -1;
     while (players.length < n) addSlot(players.length);
     while (players.length > n) removeLastSlot();
+    players.forEach((p, i) => { if (p.unloaded) load(i); });
+    applyGrid();
     Object.entries(layoutBtns).forEach(([k, b]) => b.classList.toggle('on', Number(k) === n));
     saveState();
+  }
+
+  // Columnas/filas según el diseño, o un solo cuadro si hay uno agrandado
+  function applyGrid() {
+    const [cols, rows] = expanded >= 0 ? [1, 1] : LAYOUTS[layout];
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    players.forEach((p, i) => {
+      p.cell.classList.toggle('hide', expanded >= 0 && i !== expanded);
+      p.bigBtn.classList.toggle('on', i === expanded);
+    });
+  }
+
+  // Al agrandar se descargan los demás; al volver se recargan (en vivo, pero puede salir un anuncio)
+  function toggleExpand(i) {
+    expanded = expanded === i ? -1 : i;
+    players.forEach((p, j) => {
+      if (j !== i && (expanded >= 0 || p.unloaded)) load(j);
+    });
+    applyGrid();
+  }
+
+  // Link de YouTube de lo que muestra el cuadro; si es el directo por canal, la página /live del canal
+  function youtubeUrl(i) {
+    const ch = channelFor(i);
+    const id = custom[i] || ch.videoId || (players[i].fallback ? ch.fallbackId : '');
+    return id ? `https://www.youtube.com/watch?v=${id}` : `https://www.youtube.com/channel/${ch.channelId}/live`;
   }
 
   // Crea (o recrea) el iframe del cuadro; al recargar vuelve a empezar en mute
@@ -221,6 +267,10 @@
     if (p.yt) { try { p.yt.destroy(); } catch (e) {} p.yt = null; }
     p.cell.innerHTML = '';
     p.fallback = useFallback;
+    p.muted = true;
+    // Con un cuadro agrandado, los demás quedan vacíos (sin video ni consumo) hasta volver a la grilla
+    p.unloaded = expanded >= 0 && i !== expanded;
+    if (p.unloaded) { render(i); return; }
 
     const iframe = document.createElement('iframe');
     iframe.id = 'player' + i;
@@ -235,8 +285,7 @@
     tag.innerHTML = '<span class="dot"></span>';
     tag.append(ch.name);
 
-    p.cell.append(iframe, tag);
-    p.muted = true;
+    p.cell.append(iframe, tag, p.tools);
     if (apiReady) attach(i);
     render(i);
   }
@@ -291,6 +340,7 @@
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'SELECT') return;
     if (e.key === 'h' || e.key === 'H') { header.classList.toggle('hidden'); return; }
+    if (e.key === 'Escape' && expanded >= 0) { toggleExpand(expanded); return; }
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= players.length) toggle(n - 1);
   });
