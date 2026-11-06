@@ -84,10 +84,11 @@
   // channelId: siempre muestra el directo actual del canal (no cambia).
   // videoId:   opcional. Si lo completas, se usa ese video en vez del directo del canal.
   //            Sirve si el directo por canal no carga. Cópialo del link: youtube.com/watch?v=ESTE_ID
+  // fallbackId: opcional. Se usa solo si el directo por canal da error (p. ej. el canal tiene dos directos a la vez).
   const CHANNELS = [
     { name: 'Monumental 1080', channelId: 'UCApQkTY6oHoGjZr6jfMajwQ', videoId: '' }, // último visto: r7BMMpmwtsg
     { name: 'MEGA TV',         channelId: 'UCfAdi_G2owo819wJsw4OLPQ', videoId: '' }, // último visto: yrqaA-LTbrA
-    { name: 'ABC TV',          channelId: 'UCEklbFbPoMaV1ciEb-0mAxg', videoId: '' }, // último visto: koJbtOzjsbI
+    { name: 'ABC TV',          channelId: 'UCEklbFbPoMaV1ciEb-0mAxg', videoId: '', fallbackId: 'koJbtOzjsbI' },
     { name: 'NPY',             channelId: 'UCXm5UbX1eXIFmFE0lz1etiA', videoId: '' }, // último visto: _ErAcg5qFMo
     { name: 'Senado TV',       channelId: 'UCMXLvWR4z1Z4P4JvubxMQtg', videoId: '' }, // último visto: rmdELJNkqS4
     { name: 'Trece',           channelId: 'UCbgzWL_vNk3K2vcpk2udhLA', videoId: '' }, // último visto: dU7zxIJDhYM
@@ -115,7 +116,7 @@
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { return {}; }
   }
   function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ layout, slots })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ layout, slots, custom })); } catch (e) {}
   }
 
   const saved = readState();
@@ -126,6 +127,30 @@
     return CHANNELS.some(c => c.channelId === id) ? id : CHANNELS[i % CHANNELS.length].channelId;
   });
   const channelFor = i => CHANNELS.find(c => c.channelId === slots[i]);
+  // Video pegado a mano por pantalla; tiene prioridad sobre el canal hasta que se borra o se cambia de canal
+  const custom = Array.from({ length: MAX_SLOTS }, (_, i) => (saved.custom && saved.custom[i]) || '');
+
+  // Solo links de YouTube (youtube.com/watch?v=, /live/, /embed/, /shorts/ o youtu.be/); cualquier otro sitio se rechaza
+  function parseVideoId(text) {
+    let url;
+    try { url = new URL(text.trim()); } catch (e) { return ''; }
+    const host = url.hostname.replace(/^(www\.|m\.)/, '');
+    let id = '';
+    if (host === 'youtu.be') id = url.pathname.slice(1);
+    else if (host === 'youtube.com') id = url.searchParams.get('v') || (url.pathname.match(/^\/(?:live|embed|shorts)\/([^/]+)/) || [])[1] || '';
+    return /^[\w-]{11}$/.test(id) ? id : '';
+  }
+
+  function pasteLink(i) {
+    const current = custom[i] ? 'https://www.youtube.com/watch?v=' + custom[i] : '';
+    const input = prompt('Pega el link de YouTube (vacío = volver al directo del canal):', current);
+    if (input === null) return;
+    const id = parseVideoId(input);
+    if (input.trim() && !id) { alert('Solo se aceptan links de videos de YouTube (youtube.com o youtu.be).'); return; }
+    custom[i] = id;
+    saveState();
+    load(i);
+  }
 
   function addSlot(i) {
     const cell = document.createElement('div');
@@ -138,13 +163,14 @@
     const select = document.createElement('select'); select.title = 'Elegir canal';
     CHANNELS.forEach(c => select.add(new Option(c.name, c.channelId)));
     select.value = slots[i];
-    select.onchange = () => { slots[i] = select.value; saveState(); load(i); select.blur(); };
+    select.onchange = () => { slots[i] = select.value; custom[i] = ''; saveState(); load(i); select.blur(); };
     const muteBtn = document.createElement('button'); muteBtn.onclick = () => toggle(i);
     const reloadBtn = document.createElement('button'); reloadBtn.textContent = '↻'; reloadBtn.title = 'Recargar'; reloadBtn.onclick = () => load(i);
-    ctl.append(key, select, muteBtn, reloadBtn);
+    const linkBtn = document.createElement('button'); linkBtn.textContent = '🔗'; linkBtn.title = 'Pegar link de YouTube'; linkBtn.onclick = () => pasteLink(i);
+    ctl.append(key, select, muteBtn, reloadBtn, linkBtn);
     channelsBar.append(ctl);
 
-    players[i] = { cell, ctl, muteBtn, muted: true, yt: null };
+    players[i] = { cell, ctl, muteBtn, linkBtn, muted: true, yt: null };
     load(i);
   }
 
@@ -168,17 +194,19 @@
   }
 
   // Crea (o recrea) el iframe del cuadro; al recargar vuelve a empezar en mute
-  function load(i) {
+  function load(i, useFallback = false) {
     const ch = channelFor(i);
     const p = players[i];
     if (p.yt) { try { p.yt.destroy(); } catch (e) {} p.yt = null; }
     p.cell.innerHTML = '';
+    p.fallback = useFallback;
 
     const iframe = document.createElement('iframe');
     iframe.id = 'player' + i;
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-    iframe.src = ch.videoId
-      ? `https://www.youtube.com/embed/${ch.videoId}?${params}`
+    const videoId = custom[i] || ch.videoId || (useFallback ? ch.fallbackId : '');
+    iframe.src = videoId
+      ? `https://www.youtube.com/embed/${videoId}?${params}`
       : `https://www.youtube.com/embed/live_stream?channel=${ch.channelId}&${params}`;
 
     const tag = document.createElement('div');
@@ -188,8 +216,17 @@
 
     p.cell.append(iframe, tag);
     p.muted = true;
-    if (apiReady) p.yt = new YT.Player(iframe.id);
+    if (apiReady) attach(i);
     render(i);
+  }
+
+  // Engancha la API al iframe; si el directo por canal da error, reintenta una vez con el fallbackId
+  function attach(i) {
+    players[i].yt = new YT.Player('player' + i, { events: { onError: () => {
+      const p = players[i];
+      const ch = channelFor(i);
+      if (p && !p.fallback && !custom[i] && !ch.videoId && ch.fallbackId) load(i, true);
+    } } });
   }
 
   function render(i) {
@@ -197,6 +234,7 @@
     p.muteBtn.textContent = p.muted ? '🔇' : '🔊';
     p.muteBtn.classList.toggle('on', !p.muted);
     p.cell.classList.toggle('audio', !p.muted);
+    p.linkBtn.classList.toggle('on', !!custom[i]);
   }
 
   function toggle(i) {
@@ -237,7 +275,7 @@
   // La API de YouTube se engancha a los iframes para poder controlar el mute
   window.onYouTubeIframeAPIReady = () => {
     apiReady = true;
-    players.forEach((p, i) => { p.yt = new YT.Player('player' + i); });
+    players.forEach((_, i) => attach(i));
   };
   const s = document.createElement('script');
   s.src = 'https://www.youtube.com/iframe_api';
