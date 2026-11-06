@@ -63,6 +63,14 @@
   }
   .tag .dot { width: 7px; height: 7px; border-radius: 50%; background: #e53935; box-shadow: 0 0 4px #e53935; }
   .cell.audio .tag .dot { background: #2ecc71; box-shadow: 0 0 4px #2ecc71; }
+
+  /* Aviso cuando el canal no transmite o el video no se puede ver */
+  .offline {
+    position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px; text-align: center;
+    background: #111; color: #ccc; font-size: clamp(13px, 1.5vw, 20px);
+  }
+  .offline small { color: #777; font-size: .7em; }
 </style>
 </head>
 <body>
@@ -92,6 +100,19 @@
     { name: 'NPY',             channelId: 'UCXm5UbX1eXIFmFE0lz1etiA', videoId: '' }, // último visto: _ErAcg5qFMo
     { name: 'Senado TV',       channelId: 'UCMXLvWR4z1Z4P4JvubxMQtg', videoId: '' }, // último visto: rmdELJNkqS4
     { name: 'Trece',           channelId: 'UCbgzWL_vNk3K2vcpk2udhLA', videoId: '' }, // último visto: dU7zxIJDhYM
+    { name: 'Telefuturo',      channelId: 'UCtM-kY8-zx8zzsrWKVUffyA', videoId: '', fallbackId: 'C_lDY_wsFew' },
+    { name: 'GEN',             channelId: 'UC9FQShRxvepLNn6lLfvBhyA', videoId: '', fallbackId: 'GtoT3gNq9O4' },
+    { name: 'La Nación',       channelId: 'UC0j83Ogsf44Vdi3Qi5OUrRA', videoId: '', fallbackId: 'g0F123l4UO0' },
+    { name: 'SNT',             channelId: 'UC8NNg2qEuMQIXlqPS-eu_ig', videoId: '', fallbackId: 'ktKP8oBv_Wk' },
+    { name: 'TV Cámara',       channelId: 'UCRVeQhiqhUAxRRUod7F-K3A', videoId: '', fallbackId: '_-rswAwOSis' },
+    { name: 'latele',          channelId: 'UCtM4N3FWZ9DhKxx8D4fCNUA', videoId: '', fallbackId: 'v5CX4yivaGU' },
+    { name: 'América TV',      channelId: 'UC_JrKD7FADkMz34BvN33vaA', videoId: '', fallbackId: 'OsxzvEgF1w0' },
+    { name: 'Ñanduti',         channelId: 'UC3MzWfxWB6ImezkL5_DSd4A', videoId: '', fallbackId: 'br2qul_ZpdE' }, // @nanduti1020; existe también @RadioNandutiAM
+    { name: 'Telefuturo Prensa', channelId: 'UC05nHifnRWxoJkzgAP-sffg', videoId: '' },
+    { name: 'Unicanal',        channelId: 'UCT9-9nG-go0cQGn9rVBzaxA', videoId: '' },
+    { name: 'C9N',             channelId: 'UC2uoT9_KgHuBzoYX5JepHEA', videoId: '' },
+    { name: 'Última Hora',     channelId: 'UCjrwumB0Pzw_PNNYGXD8Vbw', videoId: '' },
+    { name: 'Paraguay TV',     channelId: 'UCWa_pUx7F5MWWoHfGtygaqg', videoId: '' },
   ];
   // ================================
 
@@ -225,8 +246,19 @@
     players[i].yt = new YT.Player('player' + i, { events: { onError: () => {
       const p = players[i];
       const ch = channelFor(i);
-      if (p && !p.fallback && !custom[i] && !ch.videoId && ch.fallbackId) load(i, true);
+      if (!p) return;
+      if (!p.fallback && !custom[i] && !ch.videoId && ch.fallbackId) load(i, true);
+      else showOffline(i);
     } } });
+  }
+
+  function showOffline(i) {
+    const p = players[i];
+    if (p.cell.querySelector('.offline')) return;
+    const box = document.createElement('div');
+    box.className = 'offline';
+    box.innerHTML = '<div>No está transmitiendo</div><small>Prueba ↻ o pega un link con 🔗</small>';
+    p.cell.append(box);
   }
 
   function render(i) {
