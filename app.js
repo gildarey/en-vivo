@@ -31,8 +31,8 @@ const CHANNELS = [
 // ================================
 
 // Diseños: cantidad de pantallas → [columnas, filas]
-const LAYOUTS = { 1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2] };
-const MAX_SLOTS = 6;
+const LAYOUTS = { 1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2], 9: [3, 3] };
+const MAX_SLOTS = 9;
 const STORAGE_KEY = 'tv-paraguay';
 
 document.title = APP_NAME;

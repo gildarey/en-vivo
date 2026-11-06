@@ -11,9 +11,9 @@ Uso personal, sin fines comerciales.
 
 Abrir `index.html` en el navegador.
 
-- **Pantallas:** botones `1 · 2 · 4 · 6` en el header para elegir cuántos cuadros ver.
+- **Pantallas:** botones `1 · 2 · 4 · 6 · 9` en el header para elegir cuántos cuadros ver.
 - **Canal por cuadro:** cada cuadro tiene un desplegable para elegir qué canal muestra.
-- **Audio:** 🔇/🔊 en cada cuadro, o las teclas `1`–`6`. El cuadro con audio queda marcado en verde.
+- **Audio:** 🔇/🔊 en cada cuadro, o las teclas `1`–`9`. El cuadro con audio queda marcado en verde.
 - **Recargar:** ↻ en cada cuadro, o ↻ Todo.
 - **Pegar un link:** 🔗 en cada cuadro. Acepta solo links de YouTube (`youtube.com/watch?v=…`, `youtu.be/…`, `/live/…`). Vacío = vuelve al directo del canal. Se borra al cambiar de canal.
 - **Abrir en YouTube:** ↗ arriba a la derecha de cada cuadro.
