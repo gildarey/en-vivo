@@ -19,6 +19,7 @@ Abrir `index.html` en el navegador.
 - **Abrir en YouTube:** ↗ arriba a la derecha de cada cuadro.
 - **Agrandar:** ⛶ arriba a la derecha de cada cuadro muestra solo ese cuadro. ⛶ de nuevo o `Esc` para volver.
 - **Tecla `H`:** oculta o muestra el header.
+- **Enlaces:** en el pie, accesos a Senado, Diputados, SILpy (expedientes) y las webs de ABC, Última Hora y La Nación.
 
 El diseño, los canales elegidos y los links pegados quedan guardados en ese navegador.
 
@@ -26,7 +27,7 @@ Si un canal no está transmitiendo, el cuadro muestra "No está transmitiendo" (
 
 ## Agregar un canal
 
-En `index.html`, sumar una línea a la lista `CHANNELS` con el nombre y el `channelId` del canal de YouTube.
+En `app.js`, sumar una línea a la lista `CHANNELS` con el nombre y el `channelId` del canal de YouTube.
 
 - `videoId` (opcional): se usa siempre en vez del directo del canal.
 - `fallbackId` (opcional): se usa solo si el directo del canal da error, por ejemplo cuando el canal tiene dos directos a la vez. Caduca cuando ese directo termina.
